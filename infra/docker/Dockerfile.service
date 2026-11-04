@@ -1,0 +1,17 @@
+FROM eclipse-temurin:21-jdk-jammy AS build
+WORKDIR /workspace
+COPY gradle gradle
+COPY gradlew settings.gradle build.gradle gradle.properties ./
+COPY services services
+RUN chmod +x gradlew
+ARG SERVICE
+RUN ./gradlew :services:${SERVICE}:bootJar --no-daemon
+
+FROM eclipse-temurin:21-jre-jammy
+RUN groupadd --gid 10001 app && useradd --uid 10001 --gid app app     && mkdir /app /logs && chown app:app /app /logs
+WORKDIR /app
+ARG SERVICE
+COPY --from=build --chown=app:app /workspace/services/${SERVICE}/build/libs/app.jar app.jar
+USER app
+ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=65.0"
+ENTRYPOINT ["java", "-jar", "app.jar"]

@@ -1,0 +1,50 @@
+server:
+  port: ${SERVER_PORT:8080}
+spring:
+  application:
+    name: fortune-service
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: fortune-service
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+    listener:
+      ack-mode: record
+    producer:
+      acks: all
+      properties:
+        enable.idempotence: true
+
+  datasource:
+    url: ${POSTGRES_URL:jdbc:postgresql://localhost:5432/unppal}
+    username: ${POSTGRES_USER:unppal}
+    password: ${POSTGRES_PASSWORD}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+      group:
+        readiness:
+          include: readinessState,db,redis
+logging:
+  file:
+    name: ${LOG_FILE:./logs/fortune-service.log}
+  structured:
+    format:
+      file: ecs

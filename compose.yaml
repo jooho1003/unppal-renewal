@@ -1,0 +1,183 @@
+name: unppal-renewal
+
+x-app: &app
+  profiles: [apps]
+  restart: unless-stopped
+  volumes:
+    - ./logs:/logs
+  environment: &app-env
+    DEV_PASSWORD: ${DEV_PASSWORD:?Run scripts/init-env.ps1 first}
+    KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+
+services:
+  postgres:
+    image: postgres:17.6
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-unppal}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run scripts/init-env.ps1 first}
+      POSTGRES_DB: ${POSTGRES_DB:-unppal}
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7.4.6-alpine
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Run scripts/init-env.ps1 first}
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?Run scripts/init-env.ps1 first}
+    command: [sh, -c, 'exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"']
+    ports: ["127.0.0.1:6379:6379"]
+    volumes: [redis-data:/data]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  mongodb:
+    image: mongo:8.0.14
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-unppal}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?Run scripts/init-env.ps1 first}
+      MONGO_INITDB_DATABASE: unppal
+    ports: ["127.0.0.1:27017:27017"]
+    volumes: [mongo-data:/data/db]
+    healthcheck:
+      test: [CMD, mongosh, --quiet, --eval, 'quit(db.adminCommand({ ping: 1 }).ok ? 0 : 1)']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  kafka:
+    image: apache/kafka:3.9.2
+    environment:
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: INTERNAL://:29092,EXTERNAL://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx512m
+    ports: ["127.0.0.1:9092:9092"]
+    volumes: [kafka-data:/var/lib/kafka/data]
+    healthcheck:
+      test: [CMD-SHELL, '/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:29092 > /dev/null 2>&1']
+      interval: 15s
+      timeout: 10s
+      retries: 15
+      start_period: 30s
+
+  kafka-init:
+    image: apache/kafka:3.9.2
+    depends_on:
+      kafka: {condition: service_healthy}
+    entrypoint: [/bin/sh, /scripts/init-topics.sh]
+    volumes: [./infra/kafka/init-topics.sh:/scripts/init-topics.sh:ro]
+    restart: "no"
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.18.8
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+    ports: ["127.0.0.1:9200:9200"]
+    volumes: [elastic-data:/usr/share/elasticsearch/data]
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s" > /dev/null']
+      interval: 15s
+      timeout: 10s
+      retries: 15
+      start_period: 30s
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.18.8
+    profiles: [elk]
+    environment:
+      LS_JAVA_OPTS: -Xms256m -Xmx256m
+    depends_on:
+      elasticsearch: {condition: service_healthy}
+    volumes:
+      - ./infra/logstash/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - ./infra/logstash/pipeline:/usr/share/logstash/pipeline:ro
+      - ./logs:/logs:ro
+      - logstash-data:/usr/share/logstash/data
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.18.8
+    profiles: [elk]
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    depends_on:
+      elasticsearch: {condition: service_healthy}
+    ports: ["127.0.0.1:5601:5601"]
+
+  fortune-service:
+    <<: *app
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.service
+      args: {SERVICE: fortune-service}
+    ports: ["127.0.0.1:8080:8080"]
+    environment:
+      <<: *app-env
+      POSTGRES_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-unppal}
+      POSTGRES_USER: ${POSTGRES_USER:-unppal}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run scripts/init-env.ps1 first}
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Run scripts/init-env.ps1 first}
+      LOG_FILE: /logs/fortune-service.log
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      kafka-init: {condition: service_completed_successfully}
+
+  interpretation-service:
+    <<: *app
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.service
+      args: {SERVICE: interpretation-service}
+    ports: ["127.0.0.1:8081:8081"]
+    environment:
+      <<: *app-env
+      MONGODB_URI: mongodb://${MONGO_USER:-unppal}:${MONGO_PASSWORD:?Run scripts/init-env.ps1 first}@mongodb:27017/unppal?authSource=admin
+      LOG_FILE: /logs/interpretation-service.log
+    depends_on:
+      mongodb: {condition: service_healthy}
+      kafka-init: {condition: service_completed_successfully}
+
+  search-service:
+    <<: *app
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.service
+      args: {SERVICE: search-service}
+    ports: ["127.0.0.1:8082:8082"]
+    environment:
+      <<: *app-env
+      ELASTICSEARCH_URIS: http://elasticsearch:9200
+      LOG_FILE: /logs/search-service.log
+    depends_on:
+      elasticsearch: {condition: service_healthy}
+      kafka-init: {condition: service_completed_successfully}
+
+volumes:
+  postgres-data:
+  redis-data:
+  mongo-data:
+  kafka-data:
+  elastic-data:
+  logstash-data:
