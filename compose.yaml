@@ -8,6 +8,7 @@ x-app: &app
   environment: &app-env
     DEV_PASSWORD: ${DEV_PASSWORD:?Run scripts/init-env.ps1 first}
     KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    API_DOCS_ENABLED: ${API_DOCS_ENABLED:-true}
 
 services:
   postgres:

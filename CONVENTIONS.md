@@ -80,7 +80,7 @@ Bruno 검증은 서버 단위/통합 테스트와 함께 사용한다. 실제 �
 
 기능마다 적용되는 항목을 확인한다: 주석과 함수 명세, DTO/모델 필드 표, API Markdown/OpenAPI 계약, Swagger 실제 호출, Bruno assertion, Zustand 상태/초기화, 서버·프런트 테스트/빌드. 변경 범위에 해당하지 않는 항목은 이유를 적고, 실행하지 못한 항목은 미검증으로 남긴다.
 
-이번 변경은 개발 기준 확정이다. 현재 `apps/web/package.json`에 Zustand가 없고 Gradle에 springdoc 구성이 없으며 Bruno 컬렉션도 없다. 기능 명세·타입 검토와 함께 실제 의존성·도구 구성을 도입하고 해당 검증을 마친 뒤에만 설치·연동 완료로 기록한다.
+2026-11-05의 기준 확정 당시에는 `apps/web/package.json`에 Zustand가 없고 Gradle에 springdoc 구성이 없으며 Bruno 컬렉션도 없었다. 이후 2026-11-06에는 세 서비스 springdoc·루트 Bruno CLI·`apps/mobile`의 Zustand를 실제 연동했다. 기존 웹에는 공유 상태 기능이 없어 빈 스토어를 추가하지 않았다. 현재 구현·검증 범위는 [함수·상태 명세](docs/specs/mobile-tooling.md)와 [실험 기록](docs/learning/2026-11-06-mobile-tooling.md)을 따른다.
 
 검증 명령은 기존 AGENTS.md의 Gradle·npm·Compose 명령을 사용하고, API 작업에서는 실제로 설정한 Swagger·Bruno 실행 방법과 결과를 추가한다. 이번 문서 변경만으로 앱의 기능 검증이나 빌드 통과를 주장하지 않는다.
 

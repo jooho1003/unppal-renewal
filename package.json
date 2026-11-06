@@ -1,0 +1,10 @@
+{
+  "name": "unppal-tools",
+  "private": true,
+  "scripts": {
+    "test:api": "cd bruno && bru run"
+  },
+  "devDependencies": {
+    "@usebruno/cli": "4.3.0"
+  }
+}

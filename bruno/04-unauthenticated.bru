@@ -1,0 +1,19 @@
+meta {
+  name: 없는 비공개 경로 미인증
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/not-implemented
+  body: none
+  auth: none
+}
+
+tests {
+  // 미구현 경로도 인증 없이 통과하지 않으며 Basic challenge를 반환한다.
+  test("authentication boundary", function () {
+    expect(res.status).to.equal(401);
+    expect(res.headers["www-authenticate"]).to.include("Basic");
+  });
+}

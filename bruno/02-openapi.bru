@@ -1,0 +1,26 @@
+meta {
+  name: OpenAPI 계약 조회
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/v3/api-docs
+  body: none
+  auth: none
+}
+
+tests {
+  // operationId와 필수 필드·타입이 Markdown 및 클라이언트 계약과 일치해야 한다.
+  test("OpenAPI contract", function () {
+    expect(res.status).to.equal(200);
+    expect(res.body.paths["/api/system"].get.operationId).to.equal("getSystemInfo");
+    const unauthorized = res.body.paths["/api/system"].get.responses["401"];
+    expect(unauthorized.headers["WWW-Authenticate"].schema.type).to.equal("string");
+    expect(unauthorized.content).to.equal(undefined);
+    const schema = res.body.components.schemas.SystemInfo;
+    expect(schema.required.sort()).to.deep.equal(["service", "stage"]);
+    expect(schema.properties.service.type).to.equal("string");
+    expect(schema.properties.stage.type).to.equal("string");
+  });
+}
